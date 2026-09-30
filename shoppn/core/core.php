@@ -34,7 +34,7 @@ function get_ip()
 // Redirect to another page
 function redirect($url)
 {
-    header("Location: " . $url);
+    header('Location: ' . $url);
     exit;
 }
 
@@ -51,6 +51,37 @@ function is_admin()
 {
     return isset($_SESSION['user_role'])
         && (int) $_SESSION['user_role'] === 1;
+}
+
+
+// Find the app's base URL.
+// Locally: /shoppn
+// Live: /~wun-nam.haruna/ecommerce-class/shoppn
+function app_base()
+{
+    $script = $_SERVER['SCRIPT_NAME'] ?? '';
+    $marker = '/shoppn';
+
+    $position = strpos($script, $marker);
+
+    if ($position !== false) {
+        return substr(
+            $script,
+            0,
+            $position + strlen($marker)
+        );
+    }
+
+    return '/shoppn';
+}
+
+
+// Build a URL within the application
+function app_url($path = '')
+{
+    return rtrim(app_base(), '/')
+        . '/'
+        . ltrim($path, '/');
 }
 
 ?>
