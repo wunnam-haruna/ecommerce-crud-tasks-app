@@ -2,10 +2,7 @@
 
 require_once __DIR__ . '/../../core/core.php';
 
-if (!is_logged_in()) {
-    $_SESSION['error'] = 'Please login to access your account.';
-    redirect('../login.php');
-}
+require_login();
 
 require __DIR__ . '/../layout/header.php';
 

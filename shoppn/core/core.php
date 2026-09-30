@@ -1,21 +1,16 @@
 <?php
 
-// Start output buffering so redirects can still work
 ob_start();
 
-// Start the session once
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// Ghana timezone
 date_default_timezone_set('Africa/Accra');
 
-// Load the shared database base class
 require_once __DIR__ . '/db_class.php';
 
 
-// Get the visitor's IP address
 function get_ip()
 {
     if (!empty($_SERVER['HTTP_CLIENT_IP'])) {
@@ -31,7 +26,6 @@ function get_ip()
 }
 
 
-// Redirect to another page
 function redirect($url)
 {
     header('Location: ' . $url);
@@ -39,14 +33,12 @@ function redirect($url)
 }
 
 
-// Check whether a customer is logged in
 function is_logged_in()
 {
     return isset($_SESSION['customer_id']);
 }
 
 
-// Check whether the logged-in user is an admin
 function is_admin()
 {
     return isset($_SESSION['user_role'])
@@ -54,9 +46,24 @@ function is_admin()
 }
 
 
-// Find the app's base URL.
-// Locally: /shoppn
-// Live: /~wun-nam.haruna/ecommerce-class/shoppn
+function require_login()
+{
+    if (!is_logged_in()) {
+        $_SESSION['error'] = 'Please login to access that page.';
+        redirect(app_url('views/login.php'));
+    }
+}
+
+
+function require_admin()
+{
+    if (!is_admin()) {
+        $_SESSION['error'] = 'Administrator access required.';
+        redirect(app_url('index.php'));
+    }
+}
+
+
 function app_base()
 {
     $script = $_SERVER['SCRIPT_NAME'] ?? '';
@@ -76,7 +83,6 @@ function app_base()
 }
 
 
-// Build a URL within the application
 function app_url($path = '')
 {
     return rtrim(app_base(), '/')

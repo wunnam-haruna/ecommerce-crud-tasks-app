@@ -17,7 +17,6 @@ class CustomerController
         $email = $data['email'];
         $password = $data['password'];
 
-        // Prevent duplicate customer accounts
         if ($this->customer->emailExists($email)) {
             return [
                 'success' => false,
@@ -25,7 +24,6 @@ class CustomerController
             ];
         }
 
-        // Never store plain-text passwords
         $hashedPassword = password_hash(
             $password,
             PASSWORD_BCRYPT
@@ -51,6 +49,27 @@ class CustomerController
             'success' => true,
             'customer_id' => $customerId,
             'user_role' => 2
+        ];
+    }
+
+
+    public function login($email, $password)
+    {
+        $customer = $this->customer->login(
+            $email,
+            $password
+        );
+
+        if (!$customer) {
+            return [
+                'success' => false,
+                'error' => 'Invalid email or password'
+            ];
+        }
+
+        return [
+            'success' => true,
+            'customer' => $customer
         ];
     }
 }

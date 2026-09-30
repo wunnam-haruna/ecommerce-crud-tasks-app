@@ -16,7 +16,6 @@ class CustomerClass extends Database
         $stmt->execute();
 
         $result = $stmt->get_result();
-
         $exists = $result->num_rows > 0;
 
         $stmt->close();
@@ -63,6 +62,45 @@ class CustomerClass extends Database
         $stmt->close();
 
         return $customerId;
+    }
+
+
+    public function getCustomerByEmail($email)
+    {
+        $stmt = $this->conn->prepare(
+            "SELECT *
+             FROM customer
+             WHERE customer_email = ?"
+        );
+
+        $stmt->bind_param("s", $email);
+        $stmt->execute();
+
+        $result = $stmt->get_result();
+        $customer = $result->fetch_assoc();
+
+        $stmt->close();
+
+        return $customer ?: false;
+    }
+
+
+    public function login($email, $password)
+    {
+        $customer = $this->getCustomerByEmail($email);
+
+        if (!$customer) {
+            return false;
+        }
+
+        if (!password_verify(
+            $password,
+            $customer['customer_pass']
+        )) {
+            return false;
+        }
+
+        return $customer;
     }
 }
 
