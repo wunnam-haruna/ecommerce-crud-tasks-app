@@ -9,8 +9,12 @@ require __DIR__ . '/../layout/header.php';
 
 <main>
     <section class="auth-card">
+
         <h2>Admin Dashboard</h2>
+
         <p>Manage your Shoppn store below.</p>
+
+        <h3>Store Management</h3>
 
         <p>
             <a href="<?php echo htmlspecialchars(
@@ -31,6 +35,17 @@ require __DIR__ . '/../layout/header.php';
                 Manage Categories
             </a>
         </p>
+
+        <p>
+            <a href="<?php echo htmlspecialchars(
+                app_url('views/admin/product.php'),
+                ENT_QUOTES,
+                'UTF-8'
+            ); ?>">
+                Manage Products
+            </a>
+        </p>
+
     </section>
 </main>
 
