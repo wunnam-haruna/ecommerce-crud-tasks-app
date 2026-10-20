@@ -1,9 +1,10 @@
+
 <?php
 
 require_once __DIR__ . '/../core/core.php';
 require_once __DIR__ . '/../controllers/ProductController.php';
 
-// Get the product ID from the URL.
+// Get the selected product ID.
 $productId = filter_input(
     INPUT_GET,
     'pro_id',
@@ -11,22 +12,22 @@ $productId = filter_input(
     ['options' => ['min_range' => 1]]
 );
 
-// Return home if the product ID is invalid.
+// Redirect if the product ID is invalid.
 if (!$productId) {
     redirect(app_url('index.php'));
 }
 
-// Retrieve the product through the Controller.
+// Retrieve product details through the Controller.
 $controller = new ProductController();
 $product = $controller->getProductById($productId);
 
-// Return home if the product does not exist.
+// Handle products that do not exist.
 if (!$product) {
     $_SESSION['error'] = 'Product not found.';
     redirect(app_url('index.php'));
 }
 
-// Escape values before displaying them.
+// Escape text for safe HTML output.
 $e = function ($value) {
     return htmlspecialchars(
         (string) ($value ?? ''),
@@ -57,9 +58,9 @@ require __DIR__ . '/layout/header.php';
                 <img
                     src="<?php echo $e(app_url(
                         'images/products/' .
-                        rawurlencode(basename(
-                            $product['product_image']
-                        ))
+                        rawurlencode(
+                            basename($product['product_image'])
+                        )
                     )); ?>"
                     alt="<?php echo $e(
                         $product['product_title']
@@ -125,15 +126,30 @@ require __DIR__ . '/layout/header.php';
                 ); ?>
             </p>
 
-            <!-- Cart functionality comes in a later lab. -->
-            <button type="button" disabled>
-                Add to Cart — Coming Soon
-            </button>
+            <!-- TASK 11: WORKING ADD TO CART LINK -->
+            <div class="product-cart-section">
 
-            <p class="field-help">
-                Shopping cart functionality will be enabled
-                when the cart module is implemented.
-            </p>
+                <a
+                    class="product-details-link"
+                    href="<?php echo $e(app_url(
+                        'actions/add_to_cart_action.php?add_cart=' .
+                        (int) $product['product_id']
+                    )); ?>"
+                >
+                    Add to Cart
+                </a>
+
+                <a
+                    class="product-back-link"
+                    style="margin-left: 15px;"
+                    href="<?php echo $e(
+                        app_url('views/cart.php')
+                    ); ?>"
+                >
+                    View Shopping Cart
+                </a>
+
+            </div>
 
         </div>
 

@@ -86,6 +86,64 @@
         </button>
     </form>
 
+
+
+<?php
+require_once __DIR__ . '/../../controllers/CartController.php';
+
+$headerCartCount = 0;
+$headerCartTotal = 0.0;
+$headerCartIp = get_ip();
+
+if (filter_var($headerCartIp, FILTER_VALIDATE_IP)) {
+    try {
+        $headerCartController = new CartController();
+        $headerCartCount = $headerCartController->getCartCount($headerCartIp);
+        $headerCartTotal = $headerCartController->getCartTotal($headerCartIp);
+    } catch (Throwable $exception) {
+        error_log('Header cart summary failed');
+    }
+}
+?>
+
+<div class="cart-summary">
+    <strong>Shopping Cart</strong>
+
+    | Total Items:
+    <?php echo (int) $headerCartCount; ?>
+
+    | Total Price:
+    <?php echo number_format($headerCartTotal, 2); ?>
+
+    |
+    <a href="<?php echo htmlspecialchars(
+        app_url('views/cart.php'),
+        ENT_QUOTES,
+        'UTF-8'
+    ); ?>">
+        Go to Cart
+    </a>
+</div>
 </header>
+
+<?php
+$cartFlash = $_SESSION['cart_flash'] ?? null;
+unset($_SESSION['cart_flash']);
+?>
+
+<?php if (is_array($cartFlash) && !empty($cartFlash['message'])): ?>
+    <div class="cart-notice alert <?php
+        echo ($cartFlash['type'] ?? '') === 'success'
+            ? 'alert-success'
+            : 'alert-error';
+    ?>" role="status">
+        <?php echo htmlspecialchars(
+            (string) $cartFlash['message'],
+            ENT_QUOTES,
+            'UTF-8'
+        ); ?>
+    </div>
+<?php endif; ?>
+
 
 <hr>
