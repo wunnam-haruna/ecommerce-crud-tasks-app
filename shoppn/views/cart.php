@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../core/core.php';
+require_once __DIR__ . '/../classes/CheckoutTransportGuard.php';
 require_once __DIR__ . '/../controllers/CartController.php';
 
 // Task 11: The coursework identifies carts by IP (not suitable in production).
@@ -115,8 +116,10 @@ require __DIR__ . '/layout/header.php';
                     <a class="product-details-link" href="<?php echo cart_escape(app_url('index.php')); ?>">
                         Continue Shopping
                     </a>
-                    <?php if (is_logged_in()): ?>
+                    <?php if (is_logged_in() && shoppn_task13_transport_allowed()): ?>
                         <a class="product-details-link" href="<?php echo cart_escape(app_url('views/payment.php')); ?>">Proceed to Paystack Test Checkout</a>
+                    <?php elseif (is_logged_in()): ?>
+                        <span>Test checkout is disabled on HTTP. Use localhost until HTTPS is available.</span>
                     <?php else: ?>
                         <a class="product-details-link" href="<?php echo cart_escape(app_url('views/login.php')); ?>">Log in to Checkout</a>
                     <?php endif; ?>

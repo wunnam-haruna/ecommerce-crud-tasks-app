@@ -1,9 +1,12 @@
 <?php
 
 require_once __DIR__ . '/../core/core.php';
+require_once __DIR__ . '/../classes/CheckoutTransportGuard.php';
+shoppn_task13_require_secure_transport();
 require_once __DIR__ . '/../controllers/CheckoutController.php';
 require_once __DIR__ . '/../controllers/CartController.php';
 require_once __DIR__ . '/../classes/PaystackClient.php';
+require_once __DIR__ . '/../classes/OrderEmailService.php';
 
 require_login();
 header('Cache-Control: no-store, private');
@@ -45,6 +48,12 @@ try {
     $orderId = $cart->processPayment(
         $customerId, $ip, $reference, (int) $attempt['amount_pesewas'], $verifiedData
     );
+    // Email must never turn a verified, recorded payment into a failure.
+    try {
+        (new OrderEmailService())->sendOnce((int) $orderId, (int) $customerId);
+    } catch (Throwable $mailError) {
+        error_log('Shoppn order confirmation email failed: ' . $mailError->getMessage());
+    }
     unset($_SESSION['task13_checkout']);
     redirect(app_url('views/payment_success.php?order_id=' . (int) $orderId));
 } catch (Throwable $ex) {

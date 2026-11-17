@@ -1,6 +1,8 @@
 <?php
 
 require_once __DIR__ . '/../core/core.php';
+require_once __DIR__ . '/../classes/CheckoutTransportGuard.php';
+shoppn_task13_require_secure_transport();
 require_once __DIR__ . '/../controllers/CartController.php';
 require_once __DIR__ . '/../controllers/CheckoutController.php';
 require_once __DIR__ . '/../classes/PaystackClient.php';
