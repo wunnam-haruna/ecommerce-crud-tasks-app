@@ -197,4 +197,218 @@ class CartClass extends Database
         return $removed;
     }
 
+
+    /**
+     * Record a verified Paystack TEST payment once, atomically.
+     * $verifiedData must come from Paystack's server-to-server Verify API,
+     * NEVER from $_GET, $_POST, or a browser-side payment callback.
+     * $amountPesewas must come from the previously stored checkout attempt.
+     */
+    public function processPayment($customerId, $ip, $reference, $amountPesewas, array $verifiedData)
+    {
+        $customerId = (int) $customerId;
+        if (
+            $customerId < 1 ||
+            !is_string($ip) || !filter_var($ip, FILTER_VALIDATE_IP) ||
+            strlen($ip) > 50 ||
+            !is_string($reference) ||
+            !preg_match('/\A[A-Za-z0-9._=-]{5,120}\z/D', $reference) ||
+            !is_int($amountPesewas) || $amountPesewas < 1
+        ) {
+            throw new InvalidArgumentException('Invalid checkout details.');
+        }
+
+        // Paystack: data.status (not just top-level status) must be success.
+        // The Paystack Verify API response's data object is passed here.
+        if (
+            ($verifiedData['status'] ?? null) !== 'success' ||
+            ($verifiedData['reference'] ?? null) !== $reference ||
+            ($verifiedData['currency'] ?? null) !== 'GHS' ||
+            ($verifiedData['domain'] ?? null) !== 'test' ||
+            !isset($verifiedData['amount']) ||
+            !(is_int($verifiedData['amount']) ||
+              (is_string($verifiedData['amount']) && ctype_digit($verifiedData['amount']))) ||
+            (int) $verifiedData['amount'] !== $amountPesewas
+        ) {
+            throw new RuntimeException('Paystack verification details do not match.');
+        }
+
+        $this->conn->begin_transaction();
+
+        try {
+            // Lock this attempt: concurrent callbacks cannot create two orders.
+            $stmt = $this->conn->prepare(
+                'SELECT * FROM checkout_attempts WHERE reference = ? FOR UPDATE'
+            );
+            $stmt->bind_param('s', $reference);
+            $stmt->execute();
+            $attempt = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+
+            if (!$attempt ||
+                (int) $attempt['customer_id'] !== $customerId ||
+                $attempt['ip_add'] !== $ip ||
+                (int) $attempt['amount_pesewas'] !== $amountPesewas ||
+                $attempt['currency'] !== 'GHS'
+            ) {
+                throw new RuntimeException('Checkout attempt does not match.');
+            }
+
+            // Ensure Paystack verified the same customer's email.
+            $paidEmail = $verifiedData['customer']['email'] ?? null;
+            if (!is_string($paidEmail) ||
+                strcasecmp(trim($paidEmail), trim($attempt['email'])) !== 0
+            ) {
+                throw new RuntimeException('Verified customer email does not match.');
+            }
+
+            // Idempotency: repeated callbacks return the existing order ID.
+            if ($attempt['status'] === 'paid' && (int) $attempt['order_id'] > 0) {
+                $orderId = (int) $attempt['order_id'];
+                $this->conn->commit();
+                return $orderId;
+            }
+            if ($attempt['status'] !== 'pending') {
+                throw new RuntimeException('Checkout is no longer pending.');
+            }
+
+            $items = json_decode($attempt['cart_snapshot'], true, 512, JSON_THROW_ON_ERROR);
+            if (!is_array($items) || !$items || !array_is_list($items)) {
+                throw new RuntimeException('Invalid saved cart snapshot.');
+            }
+
+            // Expected snapshot line format:
+            // [{"product_id":1,"qty":2,"unit_price":"350.00"}]
+            $computedPesewas = 0;
+            $seen = [];
+            foreach ($items as $item) {
+                if (!is_array($item)) {
+                    throw new RuntimeException('Invalid cart item.');
+                }
+                $productId = filter_var($item['product_id'] ?? null, FILTER_VALIDATE_INT);
+                $qty = filter_var($item['qty'] ?? null, FILTER_VALIDATE_INT);
+                $price = $item['unit_price'] ?? null;
+                if (
+                    !$productId || $productId < 1 || isset($seen[$productId]) ||
+                    !$qty || $qty < 1 || $qty > 99 ||
+                    !is_string($price) ||
+                    !preg_match('/\A(?:0|[1-9][0-9]{0,9})\.[0-9]{2}\z/D', $price)
+                ) {
+                    throw new RuntimeException('Invalid item in saved checkout.');
+                }
+                $seen[$productId] = true;
+                [$whole, $cents] = explode('.', $price);
+                $unitPesewas = (int) $whole * 100 + (int) $cents;
+                if ($unitPesewas < 1) {
+                    throw new RuntimeException('Invalid price in saved checkout.');
+                }
+                $computedPesewas += $unitPesewas * $qty;
+            }
+            if ($computedPesewas !== $amountPesewas) {
+                throw new RuntimeException('Saved cart total differs from payment.');
+            }
+
+            // A six-digit invoice fits the existing INT invoice_no column.
+            $invoiceNo = random_int(100000, 999999);
+            $order = $this->conn->prepare(
+                "INSERT INTO orders (customer_id, invoice_no, order_date, order_status)
+                 VALUES (?, ?, CURDATE(), 'paid')"
+            );
+            $order->bind_param('ii', $customerId, $invoiceNo);
+            $order->execute();
+            $orderId = (int) $this->conn->insert_id;
+            $order->close();
+
+            $detail = $this->conn->prepare(
+                'INSERT INTO orderdetails (order_id, product_id, qty, unit_price_at_purchase)
+                 VALUES (?, ?, ?, ?)'
+            );
+            foreach ($items as $item) {
+                $productId = (int) $item['product_id'];
+                $qty = (int) $item['qty'];
+                $unitPrice = $item['unit_price'];
+                $detail->bind_param('iiis', $orderId, $productId, $qty, $unitPrice);
+                $detail->execute();
+            }
+            $detail->close();
+
+            $amountGhs = $amountPesewas / 100;
+            $currency = 'GHS';
+            $payment = $this->conn->prepare(
+                'INSERT INTO payment (amt, customer_id, order_id, currency, payment_date, paystack_reference)
+                 VALUES (?, ?, ?, ?, CURDATE(), ?)'
+            );
+            $payment->bind_param('diiss', $amountGhs, $customerId, $orderId, $currency, $reference);
+            $payment->execute();
+            $payment->close();
+
+            $attemptId = (int) $attempt['id'];
+            $update = $this->conn->prepare(
+                "UPDATE checkout_attempts SET status = 'paid', order_id = ?
+                 WHERE id = ? AND status = 'pending'"
+            );
+            $update->bind_param('ii', $orderId, $attemptId);
+            $update->execute();
+            $changed = $update->affected_rows;
+            $update->close();
+            if ($changed !== 1) {
+                throw new RuntimeException('Could not finalize checkout state.');
+            }
+
+            // Do not delete newly added or changed cart entries after checkout.
+            // The original IP-based lab design remains unsafe on shared IPs.
+            $remove = $this->conn->prepare(
+                'DELETE FROM cart WHERE ip_add = ? AND p_id = ? AND qty = ?'
+            );
+            foreach ($items as $item) {
+                $productId = (int) $item['product_id'];
+                $qty = (int) $item['qty'];
+                $remove->bind_param('sii', $ip, $productId, $qty);
+                $remove->execute();
+            }
+            $remove->close();
+
+            $this->conn->commit();
+            return $orderId;
+        } catch (Throwable $error) {
+            $this->conn->rollback();
+            throw $error;
+        }
+    }
+
+    /** Retrieve an order only for its owner, with historical prices. */
+    public function getOrderById($orderId, $customerId)
+    {
+        $orderId = (int) $orderId;
+        $customerId = (int) $customerId;
+        if ($orderId < 1 || $customerId < 1) {
+            return false;
+        }
+
+        $stmt = $this->conn->prepare(
+            'SELECT o.*, p.amt AS paid_amount, p.currency, p.paystack_reference
+             FROM orders o LEFT JOIN payment p ON p.order_id = o.order_id
+             WHERE o.order_id = ? AND o.customer_id = ? LIMIT 1'
+        );
+        $stmt->bind_param('ii', $orderId, $customerId);
+        $stmt->execute();
+        $order = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        if (!$order) {
+            return false;
+        }
+
+        $stmt = $this->conn->prepare(
+            'SELECT d.product_id, d.qty, d.unit_price_at_purchase,
+                    p.product_title, p.product_image
+             FROM orderdetails d LEFT JOIN products p ON p.product_id = d.product_id
+             WHERE d.order_id = ?'
+        );
+        $stmt->bind_param('i', $orderId);
+        $stmt->execute();
+        $order['items'] = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+        return $order;
+    }
+
 }

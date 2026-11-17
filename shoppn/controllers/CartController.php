@@ -57,4 +57,18 @@ class CartController
         return $this->cart->removeFromCart($product_id, $ip);
     }
 
+
+    // Only call after the backend has obtained data from Paystack Verify API.
+    public function processPayment($customerId, $ip, $reference, $amountPesewas, array $verifiedData)
+    {
+        return $this->cart->processPayment(
+            $customerId, $ip, $reference, $amountPesewas, $verifiedData
+        );
+    }
+
+    public function getOrderById($orderId, $customerId)
+    {
+        return $this->cart->getOrderById($orderId, $customerId);
+    }
+
 }

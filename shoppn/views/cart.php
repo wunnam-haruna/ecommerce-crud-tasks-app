@@ -115,7 +115,11 @@ require __DIR__ . '/layout/header.php';
                     <a class="product-details-link" href="<?php echo cart_escape(app_url('index.php')); ?>">
                         Continue Shopping
                     </a>
-                    <button type="button" disabled>Checkout — Coming Soon</button>
+                    <?php if (is_logged_in()): ?>
+                        <a class="product-details-link" href="<?php echo cart_escape(app_url('views/payment.php')); ?>">Proceed to Paystack Test Checkout</a>
+                    <?php else: ?>
+                        <a class="product-details-link" href="<?php echo cart_escape(app_url('views/login.php')); ?>">Log in to Checkout</a>
+                    <?php endif; ?>
                 </div>
             </form>
         <?php endif; ?>
